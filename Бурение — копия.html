@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>НефтеБур</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: linear-gradient(to bottom, #87CEEB, #1E90FF);
+            font-family: Arial, sans-serif;
+        }
+
+        .game-container {
+            position: relative;
+            margin: 20px 0;
+        }
+
+        #gameCanvas {
+            border: 3px solid #8B4513;
+            background: #DEB887;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        .info-panel {
+            background: rgba(255,255,255,0.9);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            text-align: center;
+            box-shadow: 0 0 10px rgba(0,0,0,0.3);
+        }
+
+        .controls {
+            margin-top: 15px;
+        }
+
+        button {
+            padding: 10px 20px;
+            margin: 0 5px;
+            font-size: 16px;
+            cursor: pointer;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #45a049;
+        }
+
+        button:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+
+        .message {
+            margin-top: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            min-height: 25px;
+        }
+
+        .success { color: #4CAF50; }
+        .error { color: #f44336; }
+        
+        .success-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+            z-index: 10;
+            max-width: 80%;
+            border: 3px solid #4CAF50;
+        }
+        
+        .success-title {
+            font-size: 24px;
+            color: #4CAF50;
+            margin-bottom: 15px;
+        }
+        
+        .success-text {
+            font-size: 18px;
+            line-height: 1.4;
+            color: #333;
+        }
+        
+        .bear-emoji {
+            font-size: 40px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="info-panel">
+        <h1>🚀 НефтеБур</h1>
+        <p>Пробурите скважину к нефти, избегая камней!</p>
+        <div class="message" id="message"></div>
+    </div>
+
+    <div class="game-container">
+        <canvas id="gameCanvas" width="600" height="500"></canvas>
+        <div id="successMessage" class="success-message" style="display: none;">
+            <div class="bear-emoji">🐻</div>
+            <div class="success-title">Поздравляем!</div>
+            <div class="success-text">Молодец, ты пробурил скважину и помог медвежонку найти нефть! Ты успешно выполнил все задания и теперь знаешь, кто такой нефтяник-бурильщик!</div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button onclick="startDrilling()" id="startBtn">Начать бурение</button>
+        <button onclick="resetGame()" id="resetBtn">Новая игра</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const messageEl = document.getElementById('message');
+        const startBtn = document.getElementById('startBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const successMessageEl = document.getElementById('successMessage');
+
+        // Константы игры
+        const CELL_SIZE = 20;
+        const GRID_WIDTH = Math.floor(canvas.width / CELL_SIZE);
+        const GRID_HEIGHT = Math.floor(canvas.height / CELL_SIZE);
+        
+        // Игровые переменные
+        let gameState = 'idle'; // 'idle', 'drilling', 'success', 'failed'
+        let drillPosition = { x: GRID_WIDTH / 2, y: 0 };
+        let drillPath = [];
+        let stones = [];
+        let oilLake = { y: GRID_HEIGHT - 5, height: 5 };
+
+        // Цвета
+        const COLORS = {
+            background: '#DEB887',
+            earth: '#8B4513',
+            stone: '#696969',
+            oil: '#2F4F4F',
+            oilLake: '#000080',
+            drill: '#FF0000',
+            path: '#FFFF00'
+        };
+
+        // Инициализация игры
+        function initGame() {
+            gameState = 'idle';
+            drillPosition = { x: Math.floor(GRID_WIDTH / 2), y: 0 };
+            drillPath = [{ x: drillPosition.x, y: drillPosition.y }];
+            stones = generateStones();
+            successMessageEl.style.display = 'none';
+            drawGame();
+            showMessage('Нажмите "Начать бурение" и используйте стрелки для управления');
+        }
+
+        // Генерация камней
+        function generateStones() {
+            const stones = [];
+            const numStones = Math.floor(GRID_WIDTH * GRID_HEIGHT * 0.15); // 15% поля
+            
+            for (let i = 0; i < numStones; i++) {
+                let stone;
+                let attempts = 0;
+                
+                do {
+                    stone = {
+                        x: Math.floor(Math.random() * GRID_WIDTH),
+                        y: Math.floor(Math.random() * (GRID_HEIGHT - oilLake.height - 10)) + 5
+                    };
+                    attempts++;
+                } while (
+                    (stone.x === drillPosition.x && stone.y === drillPosition.y) ||
+                    stones.some(s => s.x === stone.x && s.y === stone.y) ||
+                    attempts > 100
+                );
+                
+                if (attempts <= 100) {
+                    stones.push(stone);
+                }
+            }
+            
+            return stones;
+        }
+
+        // Отрисовка игры
+        function drawGame() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Рисуем фон (землю)
+            ctx.fillStyle = COLORS.earth;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Рисуем озеро нефти
+            ctx.fillStyle = COLORS.oilLake;
+            ctx.fillRect(0, oilLake.y * CELL_SIZE, canvas.width, oilLake.height * CELL_SIZE);
+            
+            // Рисуем нефтекачалку
+            drawOilRig();
+            
+            // Рисуем камни
+            stones.forEach(stone => {
+                ctx.fillStyle = COLORS.stone;
+                ctx.fillRect(stone.x * CELL_SIZE, stone.y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+                
+                // Текстура камня
+                ctx.strokeStyle = '#555';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(stone.x * CELL_SIZE, stone.y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+            });
+            
+            // Рисуем путь бура
+            drawDrillPath();
+            
+            // Рисуем бур
+            ctx.fillStyle = COLORS.drill;
+            ctx.fillRect(drillPosition.x * CELL_SIZE, drillPosition.y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+        }
+
+        // Рисуем нефтекачалку
+        function drawOilRig() {
+            const x = drillPosition.x * CELL_SIZE;
+            
+            // Основание
+            ctx.fillStyle = '#36454F';
+            ctx.fillRect(x - 10, 0, 30, 20);
+            
+            // Стрела
+            ctx.fillStyle = '#2F4F4F';
+            ctx.fillRect(x + 5, 20, 5, 30);
+            
+            // Насос
+            ctx.fillStyle = '#808080';
+            ctx.fillRect(x - 5, 50, 20, 15);
+        }
+
+        // Рисуем путь бура
+        function drawDrillPath() {
+            if (drillPath.length < 2) return;
+            
+            ctx.strokeStyle = COLORS.path;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            
+            drillPath.forEach((point, index) => {
+                const screenX = point.x * CELL_SIZE + CELL_SIZE / 2;
+                const screenY = point.y * CELL_SIZE + CELL_SIZE / 2;
+                
+                if (index === 0) {
+                    ctx.moveTo(screenX, screenY);
+                } else {
+                    ctx.lineTo(screenX, screenY);
+                }
+            });
+            
+            ctx.stroke();
+        }
+
+        // Движение бура
+        function moveDrill(dx, dy) {
+            if (gameState !== 'drilling') return;
+            
+            const newX = drillPosition.x + dx;
+            const newY = drillPosition.y + dy;
+            
+            // Проверка границ
+            if (newX < 0 || newX >= GRID_WIDTH || newY < 0 || newY >= GRID_HEIGHT) {
+                return;
+            }
+            
+            // Проверка на камень
+            if (stones.some(stone => stone.x === newX && stone.y === newY)) {
+                gameState = 'failed';
+                showMessage('💥 Вы попали в камень! Игра окончена.', 'error');
+                drawGame();
+                return;
+            }
+            
+            // Проверка достижения нефти
+            if (newY >= oilLake.y) {
+                gameState = 'success';
+                showMessage('🎉 Нефть найдена! Вы победили!', 'success');
+                drillPath.push({ x: newX, y: newY });
+                drawGame();
+                showSuccessMessage();
+                return;
+            }
+            
+            // Обновление позиции
+            drillPosition.x = newX;
+            drillPosition.y = newY;
+            drillPath.push({ x: newX, y: newY });
+            
+            drawGame();
+        }
+
+        // Показать сообщение об успехе
+        function showSuccessMessage() {
+            successMessageEl.style.display = 'block';
+        }
+
+        // Управление с клавиатуры
+        document.addEventListener('keydown', (e) => {
+            if (gameState !== 'drilling') return;
+            
+            switch(e.key) {
+                case 'ArrowUp':
+                    e.preventDefault();
+                    moveDrill(0, -1);
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    moveDrill(0, 1);
+                    break;
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    moveDrill(-1, 0);
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    moveDrill(1, 0);
+                    break;
+            }
+        });
+
+        // Показать сообщение
+        function showMessage(text, type = '') {
+            messageEl.textContent = text;
+            messageEl.className = `message ${type}`;
+        }
+
+        // Начать бурение
+        function startDrilling() {
+            if (gameState === 'idle') {
+                gameState = 'drilling';
+                startBtn.disabled = true;
+            }
+        }
+
+        // Сброс игры
+        function resetGame() {
+            initGame();
+            startBtn.disabled = false;
+        }
+
+        // Запуск игры при загрузке
+        window.onload = initGame;
+    </script>
+</body>
+</html>
